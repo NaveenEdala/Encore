@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { QuestionGenerationRequest, QuestionGenerationResponse, CompetencyLevel } from '../types';
+import { tokenManager } from './authService';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -10,6 +11,19 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Add request interceptor to include auth token
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = tokenManager.getAccessToken();
+    if (token) {
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
 export const apiService = {
   async healthCheck(): Promise<{ status: string; message: string }> {
