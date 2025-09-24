@@ -4,10 +4,13 @@ An AI-powered educational technology platform that generates customized question
 
 ## 🚀 Features
 
+- **JWT Authentication**: Secure user authentication with 30-minute access tokens and 1-day refresh tokens
+- **User Management**: Registration, login, logout, and automatic token refresh
+- **Protected Routes**: API endpoints secured with JWT middleware
 - **AI-Powered Question Generation**: Uses OpenAI GPT or Google Gemini to create educational questions
 - **Multiple Subject Areas**: Support for Mathematics, Science, History, Literature, Computer Science, and more
 - **Competency-Based Learning**: Questions tailored to beginner, intermediate, advanced, and expert levels
-- **Interactive UI**: Modern React frontend with responsive design
+- **Interactive UI**: Modern React frontend with responsive design and authentication flow
 - **Multiple Question Types**: Multiple choice, short answer, and essay questions
 - **Export Functionality**: Download generated questions as text files
 - **Real-time API**: RESTful Flask backend with CORS support
@@ -15,8 +18,10 @@ An AI-powered educational technology platform that generates customized question
 ## 🏗️ Architecture
 
 - **Flask Backend**: Serves both the React frontend as static files and provides REST API endpoints
+- **JWT Authentication**: Secure token-based authentication with access/refresh tokens
 - **React Frontend**: Built and served as static files from Flask, with client-side routing support  
 - **Single Server**: Everything runs on one Flask server for simplified deployment
+- **Token Management**: Automatic token refresh and secure storage in localStorage
 - **API Communication**: Direct communication within the same origin (no CORS needed)
 
 ## 📋 Prerequisites
@@ -45,9 +50,10 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-4. (Optional) Add your OpenAI API key to `.env`:
+4. (Optional) Add your OpenAI API key and JWT secret key to `.env`:
 ```bash
 OPENAI_API_KEY=your_openai_api_key_here
+JWT_SECRET_KEY=your_secure_jwt_secret_key_here
 ```
 
 5. Build the React frontend:
@@ -73,10 +79,19 @@ The application will run on `http://localhost:5000` serving both the React front
 - `OPENAI_API_KEY`: Your OpenAI API key
 - `FLASK_ENV`: Set to `development` for debug mode
 - `PORT`: Backend port (default: 5000)
+- `JWT_SECRET_KEY`: Secret key for JWT token signing (required for authentication)
 
 **Note**: The React frontend is built and served as static files by Flask, so no separate frontend configuration is needed.
 
 ## 📚 API Endpoints
+
+### Authentication
+```
+POST /api/auth/register
+POST /api/auth/login  
+POST /api/auth/refresh
+GET /api/auth/me
+```
 
 ### Health Check
 ```
@@ -93,10 +108,11 @@ GET /api/subjects
 GET /api/competency-levels
 ```
 
-### Generate Questions
+### Generate Questions (Protected)
 ```
 POST /api/generate-questions
 Content-Type: application/json
+Authorization: Bearer <access_token>
 
 {
   "subject": "Mathematics",
@@ -104,6 +120,17 @@ Content-Type: application/json
   "num_questions": 5
 }
 ```
+
+**Authentication Flow:**
+1. Register: `POST /api/auth/register` with `{email, password, name}`
+2. Login: `POST /api/auth/login` with `{email, password}`
+3. Receive: `{access_token, refresh_token, user, expires_in}`
+4. Use: Include `Authorization: Bearer <access_token>` in protected requests
+5. Refresh: `POST /api/auth/refresh` with `{refresh_token}` when token expires
+
+**Demo Account:**
+- Email: `demo@example.com`
+- Password: `demo123`
 
 ## 🎯 Usage
 

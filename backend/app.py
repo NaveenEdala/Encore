@@ -1,8 +1,13 @@
 from flask import Flask, request, jsonify, send_from_directory, send_file, abort
+from flask_cors import CORS
 import os
 import openai
 from dotenv import load_dotenv
 import logging
+import jwt
+from datetime import datetime, timedelta
+from functools import wraps
+import hashlib
 
 # Load environment variables
 load_dotenv()
@@ -12,12 +17,94 @@ app = Flask(__name__,
             static_folder='../frontend/build/static',
             static_url_path='/static')
 
+# Configure CORS
+CORS(app)
+
+# Configure JWT
+app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-in-production')
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=30)
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=1)
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configure OpenAI (can be switched to Gemini later)
 openai.api_key = os.getenv('OPENAI_API_KEY')
+
+# Simple in-memory user store (replace with database in production)
+users = {
+    'demo@example.com': {
+        'email': 'demo@example.com',
+        'password_hash': hashlib.sha256('demo123'.encode()).hexdigest(),
+        'name': 'Demo User'
+    }
+}
+
+# JWT Helper Functions
+def generate_tokens(user_email):
+    """Generate access and refresh tokens for a user"""
+    current_time = datetime.utcnow()
+    
+    # Access token payload
+    access_payload = {
+        'user_email': user_email,
+        'exp': current_time + app.config['JWT_ACCESS_TOKEN_EXPIRES'],
+        'iat': current_time,
+        'type': 'access'
+    }
+    
+    # Refresh token payload
+    refresh_payload = {
+        'user_email': user_email,
+        'exp': current_time + app.config['JWT_REFRESH_TOKEN_EXPIRES'],
+        'iat': current_time,
+        'type': 'refresh'
+    }
+    
+    access_token = jwt.encode(access_payload, app.config['JWT_SECRET_KEY'], algorithm='HS256')
+    refresh_token = jwt.encode(refresh_payload, app.config['JWT_SECRET_KEY'], algorithm='HS256')
+    
+    return access_token, refresh_token
+
+def verify_token(token, token_type='access'):
+    """Verify JWT token and return payload"""
+    try:
+        payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'])
+        if payload.get('type') != token_type:
+            return None
+        return payload
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+def token_required(f):
+    """Decorator to require valid JWT token"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+        
+        # Remove 'Bearer ' prefix if present
+        if token.startswith('Bearer '):
+            token = token[7:]
+        
+        payload = verify_token(token)
+        if not payload:
+            return jsonify({'error': 'Token is invalid or expired'}), 401
+        
+        # Check if user still exists
+        user_email = payload.get('user_email')
+        if user_email not in users:
+            return jsonify({'error': 'User not found'}), 401
+        
+        request.current_user = users[user_email]
+        return f(*args, **kwargs)
+    
+    return decorated
 
 # Serve React App
 @app.route('/')
@@ -52,7 +139,150 @@ def health_check():
     """Health check endpoint"""
     return jsonify({'status': 'healthy', 'message': 'EdTech API is running'})
 
+# Authentication Endpoints
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    """Register a new user"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '')
+        name = data.get('name', '').strip()
+        
+        # Validate input
+        if not email or not password or not name:
+            return jsonify({'error': 'Email, password, and name are required'}), 400
+        
+        if len(password) < 6:
+            return jsonify({'error': 'Password must be at least 6 characters long'}), 400
+        
+        # Check if user already exists
+        if email in users:
+            return jsonify({'error': 'User already exists'}), 409
+        
+        # Create new user
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        users[email] = {
+            'email': email,
+            'password_hash': password_hash,
+            'name': name
+        }
+        
+        # Generate tokens
+        access_token, refresh_token = generate_tokens(email)
+        
+        return jsonify({
+            'message': 'User registered successfully',
+            'user': {
+                'email': email,
+                'name': name
+            },
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'expires_in': int(app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"Error during registration: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """Login user"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '')
+        
+        # Validate input
+        if not email or not password:
+            return jsonify({'error': 'Email and password are required'}), 400
+        
+        # Check if user exists
+        user = users.get(email)
+        if not user:
+            return jsonify({'error': 'Invalid credentials'}), 401
+        
+        # Verify password
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        if user['password_hash'] != password_hash:
+            return jsonify({'error': 'Invalid credentials'}), 401
+        
+        # Generate tokens
+        access_token, refresh_token = generate_tokens(email)
+        
+        return jsonify({
+            'message': 'Login successful',
+            'user': {
+                'email': user['email'],
+                'name': user['name']
+            },
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'expires_in': int(app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
+        })
+        
+    except Exception as e:
+        logger.error(f"Error during login: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/auth/refresh', methods=['POST'])
+def refresh_token():
+    """Refresh access token using refresh token"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        refresh_token = data.get('refresh_token', '')
+        
+        if not refresh_token:
+            return jsonify({'error': 'Refresh token is required'}), 400
+        
+        # Verify refresh token
+        payload = verify_token(refresh_token, 'refresh')
+        if not payload:
+            return jsonify({'error': 'Invalid or expired refresh token'}), 401
+        
+        user_email = payload.get('user_email')
+        if user_email not in users:
+            return jsonify({'error': 'User not found'}), 401
+        
+        # Generate new access token
+        access_token, _ = generate_tokens(user_email)
+        
+        return jsonify({
+            'access_token': access_token,
+            'expires_in': int(app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
+        })
+        
+    except Exception as e:
+        logger.error(f"Error during token refresh: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/auth/me', methods=['GET'])
+@token_required
+def get_current_user():
+    """Get current user information"""
+    user = request.current_user
+    return jsonify({
+        'user': {
+            'email': user['email'],
+            'name': user['name']
+        }
+    })
+
 @app.route('/api/generate-questions', methods=['POST'])
+@token_required
 def generate_questions():
     """Generate questions based on subject and competency level"""
     try:
