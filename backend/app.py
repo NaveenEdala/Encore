@@ -1,5 +1,4 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from flask import Flask, request, jsonify, send_from_directory, send_file, abort
 import os
 import openai
 from dotenv import load_dotenv
@@ -8,8 +7,10 @@ import logging
 # Load environment variables
 load_dotenv()
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for React frontend
+# Create Flask app with static folder pointing to React build
+app = Flask(__name__, 
+            static_folder='../frontend/build/static',
+            static_url_path='/static')
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -17,6 +18,34 @@ logger = logging.getLogger(__name__)
 
 # Configure OpenAI (can be switched to Gemini later)
 openai.api_key = os.getenv('OPENAI_API_KEY')
+
+# Serve React App
+@app.route('/')
+def serve_react_app():
+    """Serve the React app"""
+    return send_file('../frontend/build/index.html')
+
+@app.route('/<path:path>')
+def serve_react_app_routing(path):
+    """Handle React Router paths"""
+    # Check if it's an API route
+    if path.startswith('api/'):
+        # Let Flask handle API routes normally
+        return abort(404)
+    
+    # Check if it's a static asset
+    if path.startswith('static/'):
+        return send_from_directory('../frontend/build', path)
+    
+    # For other assets (favicon, manifest, etc.)
+    if '.' in path:
+        try:
+            return send_from_directory('../frontend/build', path)
+        except:
+            pass
+    
+    # For all other paths, serve the React app (SPA routing)
+    return send_file('../frontend/build/index.html')
 
 @app.route('/api/health', methods=['GET'])
 def health_check():

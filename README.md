@@ -14,10 +14,10 @@ An AI-powered educational technology platform that generates customized question
 
 ## 🏗️ Architecture
 
-- **Backend**: Flask REST API with OpenAI integration
-- **Frontend**: React with TypeScript
-- **Styling**: Custom CSS with responsive design
-- **API Communication**: Axios for HTTP requests
+- **Flask Backend**: Serves both the React frontend as static files and provides REST API endpoints
+- **React Frontend**: Built and served as static files from Flask, with client-side routing support  
+- **Single Server**: Everything runs on one Flask server for simplified deployment
+- **API Communication**: Direct communication within the same origin (no CORS needed)
 
 ## 📋 Prerequisites
 
@@ -28,7 +28,7 @@ An AI-powered educational technology platform that generates customized question
 
 ## 🛠️ Installation
 
-### Backend Setup
+### Setup
 
 1. Navigate to the backend directory:
 ```bash
@@ -50,31 +50,20 @@ cp .env.example .env
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
-5. Start the Flask server:
+5. Build the React frontend:
 ```bash
+cd ../frontend
+npm install
+npm run build
+```
+
+6. Start the Flask server (from backend directory):
+```bash
+cd ../backend
 python app.py
 ```
 
-The backend will run on `http://localhost:5000`
-
-### Frontend Setup
-
-1. Navigate to the frontend directory:
-```bash
-cd frontend
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Start the development server:
-```bash
-npm start
-```
-
-The frontend will run on `http://localhost:3000`
+The application will run on `http://localhost:5000` serving both the React frontend and API endpoints.
 
 ## 🔧 Configuration
 
@@ -85,8 +74,7 @@ The frontend will run on `http://localhost:3000`
 - `FLASK_ENV`: Set to `development` for debug mode
 - `PORT`: Backend port (default: 5000)
 
-**Frontend**:
-- `REACT_APP_API_URL`: Backend API URL (default: http://localhost:5000/api)
+**Note**: The React frontend is built and served as static files by Flask, so no separate frontend configuration is needed.
 
 ## 📚 API Endpoints
 
@@ -132,7 +120,7 @@ Content-Type: application/json
 ```
 Encore/
 ├── backend/
-│   ├── app.py              # Main Flask application
+│   ├── app.py              # Main Flask application (serves React build + API)
 │   ├── requirements.txt    # Python dependencies
 │   └── .env.example       # Environment variables template
 ├── frontend/
@@ -141,6 +129,7 @@ Encore/
 │   │   ├── services/      # API service layer
 │   │   ├── types.ts       # TypeScript type definitions
 │   │   └── App.tsx        # Main App component
+│   ├── build/             # Production build (served by Flask)
 │   ├── public/            # Static assets
 │   └── package.json       # Node.js dependencies
 └── README.md              # Project documentation
@@ -149,31 +138,30 @@ Encore/
 ### Available Scripts
 
 **Backend**:
-- `python app.py` - Start development server
+- `python app.py` - Start Flask server (serves React build + API)
 - `gunicorn app:app` - Start production server
 
 **Frontend**:
-- `npm start` - Start development server
-- `npm run build` - Build for production
+- `npm run build` - Build React app for production
+- `npm start` - Start development server (for development only)
 - `npm test` - Run tests
 
 ## 🚀 Deployment
 
-### Backend Deployment
-The backend is ready for deployment on platforms like Heroku, Railway, or any Python hosting service. Use `gunicorn` for production:
+The application is now a single Flask server that serves both the React frontend and API endpoints:
+
+### Single Server Deployment
+Build the React app and deploy the Flask server to any Python hosting service:
 
 ```bash
-gunicorn app:app --bind 0.0.0.0:$PORT
+# Build React frontend
+cd frontend && npm run build
+
+# Deploy Flask backend (includes serving React build)
+cd ../backend && gunicorn app:app --bind 0.0.0.0:$PORT
 ```
 
-### Frontend Deployment
-Build the React app and deploy to static hosting:
-
-```bash
-npm run build
-```
-
-Deploy the `build/` directory to services like Netlify, Vercel, or GitHub Pages.
+Deploy to platforms like Heroku, Railway, or any Python hosting service. The Flask app automatically serves the React build files and handles client-side routing.
 
 ## 🤝 Contributing
 
